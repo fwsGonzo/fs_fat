@@ -1,3 +1,6 @@
+#ifndef FS_MBR_HPP
+#define FS_MBR_HPP
+
 #include <cstdint>
 #include <string>
 
@@ -21,7 +24,7 @@ struct MBR
     uint32_t sectors;
     
   } __attribute__((packed));
-
+  
   struct mbr
   {
     uint8_t   boot[446]; // boot code
@@ -30,6 +33,7 @@ struct MBR
     
   } __attribute__((packed));
   
-  
   static std::string id_to_name(uint8_t);
 };
+
+#endif
