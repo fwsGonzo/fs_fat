@@ -9,6 +9,9 @@
 #include <malloc.h>
 
 #include <deque>
+#include <iostream>
+#include <locale>
+#include <codecvt>
 
 off64_t check_image(const char* path)
 {
@@ -17,6 +20,47 @@ off64_t check_image(const char* path)
   
   fseek(f, 0L, SEEK_END);
   return ftell(f);
+}
+
+
+#define UNICODE_SURROGATE_PAIR -2
+#define UNICODE_BAD_INPUT -1
+// 2014 lovewilliam <ztong@vt.edu>
+// http://www.lemoda.net/c/ucs2-to-utf8/ucs2-to-utf8.c
+int ucs2_to_utf8 (int ucs2, unsigned char * utf8)
+{
+    if (ucs2 < 0x80) {
+        utf8[0] = ucs2;
+        //utf8[1] = '\0';
+        return 1;
+    }
+    if (ucs2 >= 0x80  && ucs2 < 0x800) {
+        utf8[0] = (ucs2 >> 6)   | 0xC0;
+        utf8[1] = (ucs2 & 0x3F) | 0x80;
+        //utf8[2] = '\0';
+        return 2;
+    }
+    if (ucs2 >= 0x800 && ucs2 < 0xFFFF) {
+	if (ucs2 >= 0xD800 && ucs2 <= 0xDFFF) {
+	    /* Ill-formed. */
+	    return UNICODE_SURROGATE_PAIR;
+	}
+        utf8[0] = ((ucs2 >> 12)       ) | 0xE0;
+        utf8[1] = ((ucs2 >> 6 ) & 0x3F) | 0x80;
+        utf8[2] = ((ucs2      ) & 0x3F) | 0x80;
+        //utf8[3] = '\0';
+        return 3;
+    }
+    if (ucs2 >= 0x10000 && ucs2 < 0x10FFFF) {
+	/* http://tidy.sourceforge.net/cgi-bin/lxr/source/src/utf8.c#L380 */
+	utf8[0] = 0xF0 | (ucs2 >> 18);
+	utf8[1] = 0x80 | ((ucs2 >> 12) & 0x3F);
+	utf8[2] = 0x80 | ((ucs2 >> 6) & 0x3F);
+	utf8[3] = 0x80 | ((ucs2 & 0x3F));
+        //utf8[4] = '\0';
+        return 4;
+    }
+    return UNICODE_BAD_INPUT;
 }
 
 struct Disk
@@ -226,24 +270,64 @@ int main(int argc, const char** argv)
   for (int i = 0; i < 16; i++)
   {
     if (root[i].shortname[0] == 0x0)
-        // end of directory
-        break;
+    {
+      // end of directory
+      break;
+    }
     else if (root[i].shortname[0] == 0xE5)
-        printf("Unused index\n");
+    {
+      //printf("Unused index\n");
+    }
     else
     {
+        // convert from UCS-2 to wchar_t (UCS-4)
+        std::wstring_convert<std::codecvt_utf16<wchar_t, 0x10ffff, std::little_endian>, wchar_t> conv;
         if (root[i].is_longname())
         {
           auto* L = (FAT32::cl_long*) &root[i];
-          printf("Long name index: %d\n", L->index);
-          uint16_t longname[14];
-          memcpy(longname+ 0, L->first, 10);
-          memcpy(longname+10, L->second, 12);
-          memcpy(longname+22, L->third, 4);
-          longname[13] = 0;
-          
-          printf("Long name: %s\n", longname);
-          
+          // the last long index is part of a chain of entries
+          if (L->is_last())
+          {
+            setlocale(LC_ALL,"");
+            
+            // buffer for long filename
+            char final_name[256];
+            int  final_count = 0;
+            
+            int  total = L->long_index();
+            // go to the last entry and work backwards
+            i += total-1;
+            L += total-1;
+            
+            for (int idx = total; idx > 0; idx--)
+            {
+              uint16_t longname[13];
+              memcpy(longname+ 0, L->first, 10);
+              memcpy(longname+ 5, L->second, 12);
+              memcpy(longname+11, L->third, 4);
+              
+              int ui = 0;
+              for (int j = 0; j < 13; j++)
+              {
+                //ui += ucs2_to_utf8(longname[j], &utf8name[ui]);
+                // 0xFFFF indicates end of name
+                if (longname[j] == 0xFFFF) break;
+                
+                final_name[final_count] = longname[j] & 0xFF;
+                final_count++;
+              }
+              L--;
+              
+              if (final_count > 240)
+              {
+                printf("Suspicious long name length, breaking...\n");
+                break;
+              }
+            }
+            
+            final_name[final_count] = 0;
+            printf("Long name: %s\n", final_name);
+          }
         }
         else
         {

@@ -5,7 +5,7 @@
 FILES  = main.cpp fat.cpp mbr.cpp
 OUTPUT = FAT
 
-CC = g++ -std=c++11
+CC = clang++ -std=c++11
 
 ###########################
 CFLAGS = -Wall -Wextra -O0 -g -march=native

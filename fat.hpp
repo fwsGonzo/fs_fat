@@ -61,11 +61,7 @@ struct FAT32
     
     bool is_longname() const
     {
-      return attrib == 0x0F;
-    }
-    uint8_t long_index() const
-    {
-      return shortname[0];
+      return (attrib & 0x0F) == 0x0F;
     }
     
   } __attribute__((packed));
@@ -80,7 +76,16 @@ struct FAT32
     uint16_t second[6];
     uint16_t zero;
     uint16_t third[2];
-  };
+    
+    uint8_t long_index() const
+    {
+      return index & ~0x40;
+    }
+    uint8_t is_last() const
+    {
+      return (index & 0x40) != 0;
+    }
+  } __attribute__((packed));
   
   // helper functions
   uint32_t cl_to_sector(uint32_t cl)
