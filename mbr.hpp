@@ -27,7 +27,9 @@ struct MBR
   
   struct mbr
   {
-    uint8_t   boot[446]; // boot code
+    uint8_t   jump[3];
+    char      oem_name[8];
+    uint8_t   boot[435]; // boot code
     partition part[PARTITIONS];
     uint16_t  magic; // 0xAA55
     

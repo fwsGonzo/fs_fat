@@ -59,7 +59,28 @@ struct FAT32
     uint16_t cluster_lo;
     uint32_t size;
     
+    bool is_longname() const
+    {
+      return attrib == 0x0F;
+    }
+    uint8_t long_index() const
+    {
+      return shortname[0];
+    }
+    
   } __attribute__((packed));
+  
+  struct cl_long
+  {
+    uint8_t  index;
+    uint16_t first[5];
+    uint8_t  attrib;
+    uint8_t  entry_type;
+    uint8_t  checksum;
+    uint16_t second[6];
+    uint16_t zero;
+    uint16_t third[2];
+  };
   
   // helper functions
   uint32_t cl_to_sector(uint32_t cl)

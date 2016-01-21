@@ -8,19 +8,76 @@
 #include <cstring>
 #include <malloc.h>
 
-const char* read_image(const char* path, off64_t* size)
+#include <deque>
+
+off64_t check_image(const char* path)
 {
   FILE* f = fopen(path, "r");
-  if (!f) return nullptr;
+  if (!f) return 0;
   
   fseek(f, 0L, SEEK_END);
-  *size = ftell(f);
-  fseek(f, 0L, SEEK_SET);
-  
-  char* buffer = (char*) malloc(*size);
-  fread(buffer, *size, 1, f);
-  return buffer;
+  return ftell(f);
 }
+
+struct Disk
+{
+  struct Entry
+  {
+    Entry(uint32_t blk, uint8_t* dat)
+      : block(blk), data(dat) {}
+    
+    uint32_t block;
+    uint8_t* data;
+  };
+  
+  Disk(const char* image)
+    : path(image) {}
+  
+  static const int MAX_Q = 16;
+  
+  uint8_t* read_sector(uint32_t blk)
+  {
+    FILE* f = fopen(path, "r");
+    if (!f) return nullptr;
+    
+    fseek(f, blk * 512, SEEK_SET);
+    
+    uint8_t* buffer = new uint8_t[512];
+    int res = fread(buffer, 512, 1, f);
+    if (res < 0) perror(strerror(errno));
+    
+    return buffer;
+  }
+  
+  uint8_t* read_block(uint32_t blk)
+  {
+    // check for existing entry in cache
+    for (auto& entry : cache)
+    {
+      if (entry.block == blk)
+          return entry.data;
+    }
+    // make room if needed
+    while (cache.size() >= MAX_Q)
+        free_entry();
+    // retrieve block from disk
+    uint8_t* data = read_sector(blk);
+    // save for later
+    cache.emplace_back(blk, data);
+    return data;
+  }
+  
+  void free_entry()
+  {
+    const auto& entry = cache.front();
+    delete[] entry.data;
+    
+    cache.pop_front();
+  }
+  
+  const char* path;
+  std::deque<Entry> cache;
+};
 
 void print_bits(size_t const size, void const * const ptr)
 {
@@ -43,17 +100,18 @@ void print_bits(size_t const size, void const * const ptr)
 int main(int argc, const char** argv)
 {
   assert(argc > 1);
-  
-  off64_t size;
-  const char* img = read_image(argv[1], &size);
-  if (img == 0)
+  off64_t size = check_image(argv[1]);
+  if (size == 0)
   {
     printf("Failed to open: %s\n", strerror(errno));
     return EXIT_FAILURE;
   }
   
   printf("Loaded image %s (%lu bytes)\n", argv[1], size);
-  auto* mbr = (MBR::mbr*) img;
+  
+  Disk disk(argv[1]);
+  auto* mbr = (MBR::mbr*) disk.read_sector(0);
+  assert(mbr != nullptr);
   
   printf("MBR signature: 0x%x\n", mbr->magic);
   assert(mbr->magic == 0xAA55);
@@ -75,14 +133,11 @@ int main(int argc, const char** argv)
     <P2> Flags: 0	Type: DOS 3.0+ 16-bit FAT	LBA begin: 19980
     <P3> Flags: 0	Type: DOS 3.3+ Extended Partition	LBA begin: 26640
   */
-  
-  const char* oem_name = &img[3];
-  printf("OEM name: %s\n", oem_name);
+  printf("OEM name: %s\n", mbr->oem_name);
   
   // Let's begin our incantation
   // To drive out the demons of old DOS we have to read some PBP values
-  auto* bpb = (FAT32::BPB*) (img+11);
-  /*
+  auto* bpb = (FAT32::BPB*) mbr->boot;
   printf("Bytes per sector: \t%u\n", bpb->bytes_per_sector);
   printf("Sectors per cluster: \t%u\n", bpb->sectors_per_cluster);
   printf("Reserved sectors: \t%u\n", bpb->reserved_sectors);
@@ -99,7 +154,7 @@ int main(int argc, const char** argv)
   printf("Signature: \t0x%x\n", bpb->signature);
   
   printf("System ID: \t%.8s\n", bpb->system_id);
-  */
+  
   
   // Access FA tables
   const int SECTOR_SIZE = bpb->bytes_per_sector;
@@ -120,7 +175,7 @@ int main(int argc, const char** argv)
   {
       pfat.fat_type   = FAT32::T_FAT32;
       pfat.sectors = bpb->large_sectors;
-      pfat.sectors_per_fat = *(uint32_t*) &img[36];
+      pfat.sectors_per_fat = *(uint32_t*) &mbr->boot[25];
       pfat.root_dir_sectors = 0;
   }
   // calculate index of first data sector
@@ -156,7 +211,7 @@ int main(int argc, const char** argv)
   else
   {
     pfat.fat_type = FAT32::T_FAT32;
-    pfat.root_cluster = *(uint32_t*) (img + 44);
+    pfat.root_cluster = *(uint32_t*) &mbr->boot[33];
     printf("The image is type FAT32, with %u clusters\n", pfat.clusters);
   }
   printf("Root cluster index: %u\n", pfat.root_cluster);
@@ -167,7 +222,7 @@ int main(int argc, const char** argv)
   int S = pfat.cl_to_sector(pfat.root_cluster);
   
   printf("Root directory data sector: %u\n", S);
-  auto* root = (FAT32::cl_dir*) (img + S * SECTOR_SIZE);
+  auto* root = (FAT32::cl_dir*) disk.read_sector(S);
   for (int i = 0; i < 16; i++)
   {
     if (root[i].shortname[0] == 0x0)
@@ -176,7 +231,25 @@ int main(int argc, const char** argv)
     else if (root[i].shortname[0] == 0xE5)
         printf("Unused index\n");
     else
-        printf("Short name: %.11s\n", root[i].shortname);
+    {
+        if (root[i].is_longname())
+        {
+          auto* L = (FAT32::cl_long*) &root[i];
+          printf("Long name index: %d\n", L->index);
+          uint16_t longname[14];
+          memcpy(longname+ 0, L->first, 10);
+          memcpy(longname+10, L->second, 12);
+          memcpy(longname+22, L->third, 4);
+          longname[13] = 0;
+          
+          printf("Long name: %s\n", longname);
+          
+        }
+        else
+        {
+          printf("Short name: %.11s\n", root[i].shortname);
+        }
+    }
   }
   
   return 0;
