@@ -16,11 +16,6 @@ namespace fs
     static const int T_FAT16 = 1;
     static const int T_FAT32 = 2;
     
-    struct fat
-    {
-      
-    };
-    
     struct cl_dir
     {
       uint8_t  shortname[11];
@@ -34,6 +29,11 @@ namespace fs
       inline bool is_longname() const
       {
         return (attrib & 0x0F) == 0x0F;
+      }
+      
+      inline uint32_t cluster() const
+      {
+        return cluster_lo | (cluster_hi << 16);
       }
       
     } __attribute__((packed));
@@ -82,17 +82,6 @@ namespace fs
     
     // constructor
     FAT32(MBR::mbr* mbr);
-    
-    typedef std::function<void(bool)> on_ready_func;
-    
-    // event fired when the filesystem is in a known state
-    // event is fired after selecting partition
-    inline void set_on_ready(on_ready_func func)
-    {
-      on_ready = func;
-    }
-    
-    on_ready_func on_ready;
     
     // private members
     const int SECTOR_SIZE;

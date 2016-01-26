@@ -54,6 +54,7 @@ int main(int argc, const char** argv)
   
   printf("Image %s is %lu bytes\n", argv[1], size);
   
+  using Disk = fs::Disk<FAT32>;
   Disk disk(argv[1], 16);
   
   // mount the partition described by the Master Boot Record
@@ -65,6 +66,23 @@ int main(int argc, const char** argv)
       printf("Could not mount MBR\n");
       return;
     }
+    
+    printf("--------------------------------------\n");
+    disk.partitions(
+    [] (bool good, std::vector<Disk::Partition> parts)
+    {
+      if (!good)
+      {
+        printf("Failed to retrieve volumes on disk\n");
+        return;
+      }
+      
+      for (Disk::Partition& part : parts)
+      {
+        printf("Volume |%s| at LBA %u\n",
+            part.name().c_str(), part.lba_begin);
+      }
+    });
     
     printf("--------------------------------------\n");
     printf("FAT32 mounted\n");
@@ -81,8 +99,16 @@ int main(int argc, const char** argv)
       {
         printf("Entry: %s of size %u bytes\n",
             e.name.c_str(), e.size);
+        printf("Entry cluster: %u\n", e.cluster);
       }
     });
+    
+    /*
+    disk.open("/Koala.jpg",
+    [] (bool good, const Disk::Dirent& ent, Disk::File& file)
+    {
+      file.read(
+    });*/
     
   });
   

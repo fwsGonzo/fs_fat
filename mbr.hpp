@@ -10,12 +10,6 @@ namespace fs
   {
     static const int PARTITIONS = 4;
     
-    struct type
-    {
-      std::string name;
-      uint8_t     type;
-    };
-    
     struct partition
     {
       uint8_t flags;

@@ -5,7 +5,8 @@
 
 namespace fs
 {
-  void Disk::mount(uint8_t partid, on_mount_func on_mount)
+  template <>
+  void Disk<FAT32>::mount(uint8_t partid, on_mount_func on_mount)
   {
     // read Master Boot Record (sector 0)
     this->read_sector(0,
@@ -30,7 +31,7 @@ namespace fs
       */
       for (int i = 0; i < 4; i++)
       {
-        printf("<P%u> ", i);
+        printf("<P%u> ", i+1);
         printf("Flags: %u\t", mbr->part[i].flags);
         printf("Type: %s\t", MBR::id_to_name( mbr->part[i].type ).c_str() );
         printf("LBA begin: %x\n", mbr->part[i].lba_begin);
@@ -49,7 +50,8 @@ namespace fs
     
   }
   
-  void Disk::ls(const std::string& path, on_ls_func on_ls)
+  template <>
+  void Disk<FAT32>::ls(const std::string& path, on_ls_func on_ls)
   {
     /// FIXME: filesys is not an interface atm.
     /// FIXME: filesys is not an interface atm.
@@ -137,20 +139,18 @@ namespace fs
                 i++; // skip over the long version
                 // use short version for the stats
                 auto* D = &root[i];
-                uint32_t cl = D->cluster_hi | (D->cluster_lo << 16);
                 std::string dirname(final_name, final_count);
                 
-                dirents.emplace_back(dirname, cl, D->size, D->attrib);
+                dirents.emplace_back(dirname, D->cluster(), D->size, D->attrib);
               }
             }
             else
             {
               auto* D = &root[i];
               printf("Short name: %.11s\n", D->shortname);
-              uint32_t cl = D->cluster_hi | (D->cluster_lo << 16);
               std::string dirname((char*) D->shortname, 11);
               
-              dirents.emplace_back(dirname, cl, D->size, D->attrib);
+              dirents.emplace_back(dirname, D->cluster(), D->size, D->attrib);
             }
         }
       } // directory list
@@ -162,7 +162,8 @@ namespace fs
     
   }
   
-  void Disk::read_block(uint32_t blk, on_read_func func)
+  template <>
+  void Disk<FAT32>::read_block(uint32_t blk, on_read_func func)
   {
     FILE* f = fopen(path, "r");
     if (!f)
@@ -185,8 +186,44 @@ namespace fs
     func(buffer);
   }
   
+  template <>
+  void Disk<FAT32>::partitions(on_parts_func func)
+  {
+    // read Master Boot Record (sector 0)
+    this->read_sector(0,
+    [this, func] (uint8_t* data)
+    {
+      std::vector<Partition> parts;
+      
+      if (!data)
+      {
+        func(false, parts);
+        return;
+      }
+      
+      // first sector is the Master Boot Record
+      auto* mbr = (MBR::mbr*) data;
+      
+      for (int i = 0; i < 4; i++)
+      {
+        printf("<P%u> ", i+1);
+        printf("Flags: %u\t", mbr->part[i].flags);
+        printf("Type: %s\t", MBR::id_to_name( mbr->part[i].type ).c_str() );
+        printf("LBA begin: %x\n", mbr->part[i].lba_begin);
+        
+        parts.emplace_back(
+            mbr->part[i].flags,    // flags
+            mbr->part[i].type,     // id
+            mbr->part[i].lba_begin, // LBA
+            mbr->part[i].sectors);
+      }
+      
+      func(true, parts);
+    });
+  }
   
-  void Disk::read_sector(uint32_t blk, on_read_func func)
+  template <>
+  void Disk<FAT32>::read_sector(uint32_t blk, on_read_func func)
   {
     // check for existing entry in cache
     for (auto& entry : cache)
