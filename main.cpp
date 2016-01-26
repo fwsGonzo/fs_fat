@@ -53,6 +53,7 @@ int main(int argc, const char** argv)
   }
   
   printf("Image %s is %lu bytes\n", argv[1], size);
+  printf("--------------------------------------\n");
   
   using Disk = fs::Disk<FAT32>;
   Disk disk(argv[1], 16);
@@ -79,13 +80,12 @@ int main(int argc, const char** argv)
       
       for (Disk::Partition& part : parts)
       {
-        printf("Volume |%s| at LBA %u\n",
+        printf("Volume: %s at LBA %u\n",
             part.name().c_str(), part.lba_begin);
       }
     });
     
     printf("--------------------------------------\n");
-    printf("FAT32 mounted\n");
     
     disk.ls("/",
     [] (bool good, std::vector<Disk::Dirent> ents)

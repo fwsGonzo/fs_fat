@@ -14,36 +14,31 @@ namespace fs
     {
       auto* mbr = (MBR::mbr*) data;
       assert(mbr != nullptr);
-      printf("--------------------------------------\n");
       
       // verify image signature
       printf("OEM name: \t%s\n", mbr->oem_name);
       printf("MBR signature: \t0x%x\n", mbr->magic);
       assert(mbr->magic == 0xAA55);
-      printf("--------------------------------------\n");
-      
-      // print all the extended partitions
-      /*
-        <P0> Flags: 0	Type: DOS 3.0+ 16-bit FAT	LBA begin: 3f
-        <P1> Flags: 0	Type: DOS 3.0+ 16-bit FAT	LBA begin: ccc0
-        <P2> Flags: 0	Type: DOS 3.0+ 16-bit FAT	LBA begin: 19980
-        <P3> Flags: 0	Type: DOS 3.3+ Extended Partition	LBA begin: 26640
-      */
-      for (int i = 0; i < 4; i++)
-      {
-        printf("<P%u> ", i+1);
-        printf("Flags: %u\t", mbr->part[i].flags);
-        printf("Type: %s\t", MBR::id_to_name( mbr->part[i].type ).c_str() );
-        printf("LBA begin: %x\n", mbr->part[i].lba_begin);
-      }
-      // all the partitions are offsets to potential Volume Boot Records
-      printf("--------------------------------------\n");
       
       /// the mount partition id tells us the LBA offset to the volume
       // assume MBR for now
       assert(partid == 0);
       // initialize FAT16 or FAT32 filesystem
       filesys = std::make_shared<FAT32> (mbr);
+      
+      switch (filesys->fat_type)
+      {
+      case FAT32::T_FAT12:
+          printf("--> Mounting FAT12 filesystem\n");
+          break;
+      case FAT32::T_FAT16:
+          printf("--> Mounting FAT16 filesystem\n");
+          break;
+      case FAT32::T_FAT32:
+          printf("--> Mounting FAT32 filesystem\n");
+          break;
+      }
+      
       // on_mount callback
       on_mount(true);
     });
@@ -206,11 +201,13 @@ namespace fs
       
       for (int i = 0; i < 4; i++)
       {
+        // all the partitions are offsets to potential Volume Boot Records
+        /*
         printf("<P%u> ", i+1);
         printf("Flags: %u\t", mbr->part[i].flags);
         printf("Type: %s\t", MBR::id_to_name( mbr->part[i].type ).c_str() );
         printf("LBA begin: %x\n", mbr->part[i].lba_begin);
-        
+        */
         parts.emplace_back(
             mbr->part[i].flags,    // flags
             mbr->part[i].type,     // id
