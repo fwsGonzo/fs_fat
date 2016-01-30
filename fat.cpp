@@ -1,15 +1,30 @@
 #include "fat.hpp"
 
+#include <cassert>
+#include "mbr.hpp"
+
+#include <cstring>
+#include <locale>
+#include <codecvt>
+
 namespace fs
 {
-  FAT32::FAT32(MBR::mbr* mbr)
-    : SECTOR_SIZE(mbr->bpb()->bytes_per_sector)
+  FAT32::FAT32(std::shared_ptr<IDiskDevice> dev)
+    : device(dev)
   {
+    
+  }
+  
+  void FAT32::init(const void* base_sector)
+  {
+    // assume its the master boot record for now
+    auto* mbr = (MBR::mbr*) base_sector;
+    
     MBR::BPB* bpb = mbr->bpb();
+    this->sector_size = bpb->bytes_per_sector;
     
     // Let's begin our incantation
     // To drive out the demons of old DOS we have to read some PBP values
-    /*
     printf("Bytes per sector: \t%u\n", bpb->bytes_per_sector);
     printf("Sectors per cluster: \t%u\n", bpb->sectors_per_cluster);
     printf("Reserved sectors: \t%u\n", bpb->reserved_sectors);
@@ -26,7 +41,6 @@ namespace fs
     printf("Signature: \t0x%x\n", bpb->signature);
     
     printf("System ID: \t%.8s\n", bpb->system_id);
-    */
     
     // initialize FAT
     if (bpb->small_sectors) // FAT16
@@ -34,7 +48,7 @@ namespace fs
         this->fat_type  = FAT32::T_FAT16;
         this->sectors = bpb->small_sectors;
         this->sectors_per_fat = bpb->sectors_per_fat;
-        this->root_dir_sectors = ((bpb->root_entries * 32) + (SECTOR_SIZE - 1)) / SECTOR_SIZE;
+        this->root_dir_sectors = ((bpb->root_entries * 32) + (sector_size - 1)) / sector_size;
         printf("Root dir sectors: %u\n", this->root_dir_sectors);
     }
     else
@@ -84,6 +98,155 @@ namespace fs
     printf("System ID: %.8s\n", bpb->system_id);
   }
   
+  void FAT32::mount(uint8_t partid, on_mount_func on_mount)
+  {
+    // read Master Boot Record (sector 0)
+    device->read_sector(0,
+    [this, partid, on_mount] (const void* data)
+    {
+      auto* mbr = (MBR::mbr*) data;
+      assert(mbr != nullptr);
+      
+      // verify image signature
+      printf("OEM name: \t%s\n", mbr->oem_name);
+      printf("MBR signature: \t0x%x\n", mbr->magic);
+      assert(mbr->magic == 0xAA55);
+      
+      /// the mount partition id tells us the LBA offset to the volume
+      // assume MBR for now
+      assert(partid == 0);
+      
+      // initialize FAT16 or FAT32 filesystem
+      init(mbr);
+      
+      // determine which FAT version is mounted
+      switch (this->fat_type)
+      {
+      case FAT32::T_FAT12:
+          printf("--> Mounting FAT12 filesystem\n");
+          break;
+      case FAT32::T_FAT16:
+          printf("--> Mounting FAT16 filesystem\n");
+          break;
+      case FAT32::T_FAT32:
+          printf("--> Mounting FAT32 filesystem\n");
+          break;
+      }
+      
+      // on_mount callback
+      on_mount(true);
+    });
+    
+  }
+  
+  void FAT32::ls(const std::string& path, on_ls_func on_ls)
+  {
+    /// Let's pretend we dont see this one:
+    (void) path;
+    
+    // Attempt to read the root directory
+    int S = this->cl_to_sector(this->root_cluster);
+    
+    printf("Root directory data sector: %u\n", S);
+    device->read_sector(S,
+    [this, on_ls] (const void* data)
+    {
+      std::vector<Dirent> dirents;
+      
+      auto* root = (FAT32::cl_dir*) data;
+      if (!root)
+      {
+        // could not read sector
+        on_ls(false, dirents);
+        return;
+      }
+      
+      for (int i = 0; i < 16; i++)
+      {
+        if (root[i].shortname[0] == 0x0)
+        {
+          // end of directory
+          break;
+        }
+        else if (root[i].shortname[0] == 0xE5)
+        {
+          // unused index
+        }
+        else
+        {
+            // convert from UCS-2 to wchar_t (UCS-4)
+            // in some parallell universe this works properly, or character encoding is not completely tarded:
+            //std::wstring_convert<std::codecvt_utf16<wchar_t, 0x10ffff, std::little_endian>, wchar_t> conv;
+            
+            if (root[i].is_longname())
+            {
+              auto* L = (FAT32::cl_long*) &root[i];
+              // the last long index is part of a chain of entries
+              if (L->is_last())
+              {
+                setlocale(LC_ALL,"");
+                
+                // buffer for long filename
+                char final_name[256];
+                int  final_count = 0;
+                
+                int  total = L->long_index();
+                // go to the last entry and work backwards
+                i += total-1;
+                L += total-1;
+                
+                for (int idx = total; idx > 0; idx--)
+                {
+                  uint16_t longname[13];
+                  memcpy(longname+ 0, L->first, 10);
+                  memcpy(longname+ 5, L->second, 12);
+                  memcpy(longname+11, L->third, 4);
+                  
+                  for (int j = 0; j < 13; j++)
+                  {
+                    // 0xFFFF indicates end of name
+                    if (longname[j] == 0xFFFF) break;
+                    
+                    final_name[final_count] = longname[j] & 0xFF;
+                    final_count++;
+                  }
+                  L--;
+                  
+                  if (final_count > 240)
+                  {
+                    printf("Suspicious long name length, breaking...\n");
+                    break;
+                  }
+                }
+                
+                final_name[final_count] = 0;
+                printf("Long name: %s\n", final_name);
+                
+                i++; // skip over the long version
+                // use short version for the stats
+                auto* D = &root[i];
+                std::string dirname(final_name, final_count);
+                
+                dirents.emplace_back(dirname, D->cluster(), D->size, D->attrib);
+              }
+            }
+            else
+            {
+              auto* D = &root[i];
+              printf("Short name: %.11s\n", D->shortname);
+              std::string dirname((char*) D->shortname, 11);
+              
+              dirents.emplace_back(dirname, D->cluster(), D->size, D->attrib);
+            }
+        }
+      } // directory list
+      
+      // callback
+      on_ls(true, dirents);
+      
+    }); // read root dir
+    
+  }
   
   
 }

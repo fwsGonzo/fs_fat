@@ -4,14 +4,10 @@
 
 #include <cerrno>
 #include <cstring>
-#include <malloc.h>
-
-#include <deque>
-#include <iostream>
-#include <locale>
-#include <codecvt>
 
 #include "disk.hpp"
+#include "memdisk.hpp"
+#include <memory>
 
 using namespace fs;
 
@@ -55,11 +51,12 @@ int main(int argc, const char** argv)
   printf("Image %s is %lu bytes\n", argv[1], size);
   printf("--------------------------------------\n");
   
-  using Disk = fs::Disk<FAT32>;
-  Disk disk(argv[1], 16);
+  using MountedDisk = Disk<0, FAT32>;
+  auto device = std::make_shared<MemDisk> (argv[1], 16);
+  auto disk   = std::make_shared<MountedDisk> (device);
   
   // mount the partition described by the Master Boot Record
-  disk.mount(Disk::PART_MBR,
+  disk->fs().mount(MountedDisk::PART_MBR,
   [&disk] (bool good)
   {
     if (!good)
@@ -68,9 +65,13 @@ int main(int argc, const char** argv)
       return;
     }
     
+    printf("-= ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ =-\n");
+    printf("-=           DISK MOUNTED             =-\n");
+    printf("-= ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ =-\n");
+    
     printf("--------------------------------------\n");
-    disk.partitions(
-    [] (bool good, std::vector<Disk::Partition> parts)
+    disk->partitions(
+    [] (bool good, std::vector<MountedDisk::Partition>& parts)
     {
       if (!good)
       {
@@ -78,7 +79,7 @@ int main(int argc, const char** argv)
         return;
       }
       
-      for (Disk::Partition& part : parts)
+      for (auto& part : parts)
       {
         printf("Volume: %s at LBA %u\n",
             part.name().c_str(), part.lba_begin);
@@ -87,8 +88,8 @@ int main(int argc, const char** argv)
     
     printf("--------------------------------------\n");
     
-    disk.ls("/",
-    [] (bool good, std::vector<Disk::Dirent> ents)
+    disk->fs().ls("/",
+    [] (bool good, std::vector<FileSystem::Dirent> ents)
     {
       if (!good)
       {

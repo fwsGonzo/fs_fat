@@ -1,15 +1,16 @@
 #ifndef FS_FAT_HPP
 #define FS_FAT_HPP
 
+#include "filesystem.hpp"
+#include "disk_device.hpp"
 #include <functional>
 #include <cstdint>
-
-#include "mbr.hpp"
+#include <memory>
 
 namespace fs
 {
   
-  struct FAT32
+  struct FAT32 : public FileSystem
   {
     // FAT types
     static const int T_FAT12 = 0;
@@ -68,23 +69,39 @@ namespace fs
     uint16_t cl_to_entry_offset(uint32_t cl)
     {
       if (fat_type == T_FAT16)
-          return (cl * 2) % SECTOR_SIZE;
+          return (cl * 2) % sector_size;
       else // T_FAT32
-          return (cl * 4) % SECTOR_SIZE;
+          return (cl * 4) % sector_size;
     }
     uint16_t cl_to_entry_sector(uint32_t cl)
     {
       if (fat_type == T_FAT16)
-          return reserved + (cl * 2 / SECTOR_SIZE);
+          return reserved + (cl * 2 / sector_size);
       else // T_FAT32
-          return reserved + (cl * 4 / SECTOR_SIZE);
+          return reserved + (cl * 4 / sector_size);
     }
     
     // constructor
-    FAT32(MBR::mbr* mbr);
+    FAT32(std::shared_ptr<IDiskDevice> idev);
+    ~FAT32() {}
+    
+    // 0   = Mount MBR
+    // 1-4 = Mount VBR 1-4
+    virtual void mount(uint8_t partid, on_mount_func on_mount) override;
+    
+    // path is a path in the mounted filesystem
+    virtual void ls(const std::string& path, on_ls_func) override;
+    
+    
+  private:
+    // initialize filesystem by providing base sector
+    void init(const void* base_sector);
+    
+    // device we can read and write sectors to
+    std::shared_ptr<IDiskDevice> device;
     
     // private members
-    const int SECTOR_SIZE;
+    uint16_t sector_size; // from bytes_per_sector
     uint32_t sectors;   // total sectors in partition
     uint32_t clusters;  // number of indexable FAT clusters
     

@@ -2,7 +2,7 @@
  #    FAT32 reader    #
 ######################
 
-FILES  = main.cpp fat.cpp mbr.cpp vbr.cpp disk.cpp
+FILES  = main.cpp fat.cpp mbr.cpp vbr.cpp memdisk.cpp
 OUTPUT = FAT
 
 CC = clang++-3.8 -std=c++11
@@ -18,7 +18,7 @@ DEPS = $(OBJS:.o=.d)
 	$(CC) -c $(CFLAGS) $< -o $@
 
 all: $(OBJS)
-	$(CC) $(LDFLAGS) $(OBJS) -o $(OUTPUT)
+	$(CC) -v $(LDFLAGS) $(OBJS) -o $(OUTPUT)
 
 clean:
 	$(RM) $(OBJS) $(DEPS) $(OUTPUT)
