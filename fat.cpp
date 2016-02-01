@@ -4,6 +4,7 @@
 #include "mbr.hpp"
 
 #include <cstring>
+#include <memory>
 #include <locale>
 #include <codecvt>
 
@@ -140,7 +141,7 @@ namespace fs
   
   bool FAT32::int_dirent(
       const void* data, 
-      std::vector<Dirent>& dirents)
+      dirvec_t dirents)
   {
       auto* root = (FAT32::cl_dir*) data;
       bool  found_last = false;
@@ -212,7 +213,7 @@ namespace fs
                 auto* D = &root[i];
                 std::string dirname(final_name, final_count);
                 
-                dirents.emplace_back(dirname, D->cluster(), D->size, D->attrib);
+                dirents->emplace_back(dirname, D->cluster(), D->size, D->attrib);
               }
             }
             else
@@ -221,7 +222,7 @@ namespace fs
               printf("Short name: %.11s\n", D->shortname);
               std::string dirname((char*) D->shortname, 11);
               
-              dirents.emplace_back(dirname, D->cluster(), D->size, D->attrib);
+              dirents->emplace_back(dirname, D->cluster(), D->size, D->attrib);
             }
         }
       } // directory list
@@ -231,7 +232,7 @@ namespace fs
   
   void FAT32::int_ls(
       uint32_t sector, 
-      std::vector<Dirent>& dirents, 
+      dirvec_t dirents, 
       on_internal_ls_func callback)
   {
     std::function<void(uint32_t)> next;
@@ -275,11 +276,11 @@ namespace fs
     uint32_t S = this->cl_to_sector(this->root_cluster);
     printf("Reading root cluster %u at sector %u\n", this->root_cluster, S);
     // NOTE: ON STACK -->
-    std::vector<Dirent> dirents;
+    auto dirents = std::make_shared<std::vector<Dirent>> ();
     // NOTE: <-- ON STACK
     
     int_ls(S, dirents,
-    [=] (bool good, std::vector<Dirent>& ents)
+    [=] (bool good, dirvec_t ents)
     {
       on_ls(good, ents);
     });

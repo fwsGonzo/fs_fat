@@ -96,9 +96,9 @@ namespace fs
     // initialize filesystem by providing base sector
     void init(const void* base_sector);
     // return a list of entries from directory entries at @sector
-    typedef std::function<void(bool, std::vector<Dirent>&)> on_internal_ls_func;
-    void int_ls(uint32_t sector, std::vector<Dirent>&, on_internal_ls_func);
-    bool int_dirent(const void* data, std::vector<Dirent>&);
+    typedef std::function<void(bool, dirvec_t)> on_internal_ls_func;
+    void int_ls(uint32_t sector, dirvec_t, on_internal_ls_func);
+    bool int_dirent(const void* data, dirvec_t);
     
     // device we can read and write sectors to
     std::shared_ptr<IDiskDevice> device;

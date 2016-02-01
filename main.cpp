@@ -89,14 +89,14 @@ int main(int argc, const char** argv)
     printf("--------------------------------------\n");
     
     disk->fs().ls("/",
-    [] (bool good, std::vector<FileSystem::Dirent>& ents)
+    [] (bool good, FileSystem::dirvec_t ents)
     {
       if (!good)
       {
         printf("Could not list root directory");
       }
       
-      for (auto& e : ents)
+      for (auto& e : *ents)
       {
         printf("Entry: %s of size %u bytes\n",
             e.name.c_str(), e.size);
