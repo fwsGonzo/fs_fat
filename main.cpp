@@ -89,7 +89,7 @@ int main(int argc, const char** argv)
     printf("--------------------------------------\n");
     
     disk->fs().ls("/",
-    [] (bool good, std::vector<FileSystem::Dirent> ents)
+    [] (bool good, std::vector<FileSystem::Dirent>& ents)
     {
       if (!good)
       {

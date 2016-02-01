@@ -92,10 +92,13 @@ namespace fs
     // path is a path in the mounted filesystem
     virtual void ls(const std::string& path, on_ls_func) override;
     
-    
   private:
     // initialize filesystem by providing base sector
     void init(const void* base_sector);
+    // return a list of entries from directory entries at @sector
+    typedef std::function<void(bool, std::vector<Dirent>&)> on_internal_ls_func;
+    void int_ls(uint32_t sector, std::vector<Dirent>&, on_internal_ls_func);
+    bool int_dirent(const void* data, std::vector<Dirent>&);
     
     // device we can read and write sectors to
     std::shared_ptr<IDiskDevice> device;

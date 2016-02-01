@@ -136,40 +136,27 @@ namespace fs
       // on_mount callback
       on_mount(true);
     });
-    
   }
   
-  void FAT32::ls(const std::string& path, on_ls_func on_ls)
+  bool FAT32::int_dirent(
+      const void* data, 
+      std::vector<Dirent>& dirents)
   {
-    /// Let's pretend we dont see this one:
-    (void) path;
-    
-    // Attempt to read the root directory
-    int S = this->cl_to_sector(this->root_cluster);
-    
-    printf("Root directory data sector: %u\n", S);
-    device->read_sector(S,
-    [this, on_ls] (const void* data)
-    {
-      std::vector<Dirent> dirents;
-      
       auto* root = (FAT32::cl_dir*) data;
-      if (!root)
-      {
-        // could not read sector
-        on_ls(false, dirents);
-        return;
-      }
+      bool  found_last = false;
       
       for (int i = 0; i < 16; i++)
       {
         if (root[i].shortname[0] == 0x0)
         {
+          printf("end of dir\n");
+          found_last = true;
           // end of directory
           break;
         }
         else if (root[i].shortname[0] == 0xE5)
         {
+          printf("unused index %d\n", i);
           // unused index
         }
         else
@@ -184,8 +171,6 @@ namespace fs
               // the last long index is part of a chain of entries
               if (L->is_last())
               {
-                setlocale(LC_ALL,"");
-                
                 // buffer for long filename
                 char final_name[256];
                 int  final_count = 0;
@@ -241,12 +226,63 @@ namespace fs
         }
       } // directory list
       
-      // callback
-      on_ls(true, dirents);
-      
-    }); // read root dir
-    
+      return found_last;
   }
   
+  void FAT32::int_ls(
+      uint32_t sector, 
+      std::vector<Dirent>& dirents, 
+      on_internal_ls_func callback)
+  {
+    std::function<void(uint32_t)> next;
+    
+    next = [this, sector, callback, &dirents, next] (uint32_t sector)
+    {
+      printf("int_ls: sec=%u\n", sector);
+      device->read_sector(sector,
+      [this, sector, callback, &dirents, next] (const void* data)
+      {
+        if (!data)
+        {
+          // could not read sector
+          callback(false, dirents);
+          return;
+        }
+        
+        // parse entries in sector
+        bool done = int_dirent(data, dirents);
+        if (done)
+        {
+          // execute callback
+          callback(true, dirents);
+        }
+        else
+        {
+          // go to next sector
+          next(sector+1);
+        }
+        
+      }); // read root dir
+    };
+    
+    // start reading sectors asynchronously
+    next(sector);
+  }
+  
+  void FAT32::ls(const std::string& path, on_ls_func on_ls)
+  {
+    // Attempt to read the root directory
+    uint32_t S = this->cl_to_sector(this->root_cluster);
+    printf("Reading root cluster %u at sector %u\n", this->root_cluster, S);
+    // NOTE: ON STACK -->
+    std::vector<Dirent> dirents;
+    // NOTE: <-- ON STACK
+    
+    int_ls(S, dirents,
+    [=] (bool good, std::vector<Dirent>& ents)
+    {
+      on_ls(good, ents);
+    });
+  }
   
 }
