@@ -272,12 +272,14 @@ namespace fs
   
   void FAT32::ls(const std::string& path, on_ls_func on_ls)
   {
-    // Attempt to read the root directory
+    (void) path;
+    // ignore path and
+    // attempt to read the root directory
     uint32_t S = this->cl_to_sector(this->root_cluster);
     printf("Reading root cluster %u at sector %u\n", this->root_cluster, S);
-    // NOTE: ON STACK -->
+    
+    // result allocated on heap
     auto dirents = std::make_shared<std::vector<Dirent>> ();
-    // NOTE: <-- ON STACK
     
     int_ls(S, dirents,
     [=] (bool good, dirvec_t ents)

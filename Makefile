@@ -2,7 +2,7 @@
  #    FAT32 reader    #
 ######################
 
-FILES  = main.cpp fat.cpp mbr.cpp vbr.cpp memdisk.cpp
+FILES  = main.cpp fat.cpp mbr.cpp vbr.cpp memdisk.cpp path.cpp
 OUTPUT = FAT
 
 CC = clang++-3.8 -std=c++11
