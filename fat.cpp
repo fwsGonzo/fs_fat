@@ -2,11 +2,19 @@
 
 #include <cassert>
 #include "mbr.hpp"
+#include "path.hpp"
 
 #include <cstring>
 #include <memory>
 #include <locale>
 #include <codecvt>
+
+inline std::string trim_right_copy(
+  const std::string& s,
+  const std::string& delimiters = " \f\n\r\t\v" )
+{
+  return s.substr( 0, s.find_last_not_of( delimiters ) + 1 );
+}
 
 namespace fs
 {
@@ -192,6 +200,8 @@ namespace fs
                   {
                     // 0xFFFF indicates end of name
                     if (longname[j] == 0xFFFF) break;
+                    // sometimes, invalid stuff are snuck into filenames
+                    if (longname[j] == 0x0) break;
                     
                     final_name[final_count] = longname[j] & 0xFF;
                     final_count++;
@@ -212,6 +222,7 @@ namespace fs
                 // use short version for the stats
                 auto* D = &root[i];
                 std::string dirname(final_name, final_count);
+                dirname = trim_right_copy(dirname);
                 
                 dirents->emplace_back(dirname, D->cluster(), D->size, D->attrib);
               }
@@ -221,6 +232,7 @@ namespace fs
               auto* D = &root[i];
               printf("Short name: %.11s\n", D->shortname);
               std::string dirname((char*) D->shortname, 11);
+              dirname = trim_right_copy(dirname);
               
               dirents->emplace_back(dirname, D->cluster(), D->size, D->attrib);
             }
@@ -272,20 +284,80 @@ namespace fs
   
   void FAT32::ls(const std::string& path, on_ls_func on_ls)
   {
-    (void) path;
-    // ignore path and
-    // attempt to read the root directory
-    uint32_t S = this->cl_to_sector(this->root_cluster);
-    printf("Reading root cluster %u at sector %u\n", this->root_cluster, S);
+    // parse this path into a stack of names
+    auto pstk = std::make_shared<Path> (path);
     
-    // result allocated on heap
-    auto dirents = std::make_shared<std::vector<Dirent>> ();
+    printf("STACK: %s\n", pstk->to_string().c_str());
     
-    int_ls(S, dirents,
-    [=] (bool good, dirvec_t ents)
+    std::function<void(uint32_t)> next;
+    next = 
+    [this, pstk, next, on_ls] (uint32_t cluster)
     {
-      on_ls(good, ents);
-    });
+      if (pstk->empty())
+      {
+        // attempt to read directory
+        uint32_t S = this->cl_to_sector(cluster);
+        printf("Reading cluster %u at sector %u\n", cluster, S);
+        
+        // result allocated on heap
+        auto dirents = std::make_shared<std::vector<Dirent>> ();
+        
+        int_ls(S, dirents,
+        [=] (bool good, dirvec_t ents)
+        {
+          on_ls(good, ents);
+        });
+        return;
+      }
+      
+      // retrieve next name
+      std::string name = pstk->front();
+      pstk->pop_front();
+      
+      printf("Current target: %s\n", name.c_str());
+      
+      // result allocated on heap
+      auto dirents = std::make_shared<std::vector<Dirent>> ();
+      
+      // resolve sector
+      uint32_t S = this->cl_to_sector(cluster);
+      
+      // list directory contents
+      int_ls(S, dirents,
+      [name, dirents, &next, on_ls] (bool good, dirvec_t ents)
+      {
+        if (!good)
+        {
+          printf("Could not find: %s\n", name.c_str());
+          on_ls(false, dirents);
+          return;
+        }
+        
+        // look for name in directory
+        for (auto& e : *ents)
+        {
+          printf("Matching %s against %s\n",
+              name.c_str(), e.name.c_str());
+          
+          if (e.name == name)
+          {
+            // go to this directory, unless its the last name
+            printf("Found match for %s\n", name.c_str());
+            // enter the matching directory
+            printf("Going to cluster: %u\n", e.cluster);
+            next(e.cluster);
+            return;
+          }
+        } // for (ents)
+        
+        printf("NO MATCH for %s\n", name.c_str());
+        on_ls(false, dirents);
+      });
+      
+    };
+    
+    // start by reading root directory
+    next(this->root_cluster);
   }
   
 }

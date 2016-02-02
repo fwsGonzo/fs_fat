@@ -88,12 +88,13 @@ int main(int argc, const char** argv)
     
     printf("--------------------------------------\n");
     
-    disk->fs().ls("/",
+    disk->fs().ls("/test",
     [] (bool good, FileSystem::dirvec_t ents)
     {
       if (!good)
       {
         printf("Could not list root directory");
+        return;
       }
       
       for (auto& e : *ents)

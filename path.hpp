@@ -18,7 +18,9 @@
 #pragma once
 #ifndef FS_PATH_HPP
 #define FS_PATH_HPP
-#include <vector>
+
+#include <deque>
+#include <string>
 
 namespace fs
 {
@@ -72,6 +74,21 @@ namespace fs
 			return *this == Path(p);
 		}
 		
+    bool empty() const
+    {
+      return stk.empty();
+    }
+    
+    std::string front() const
+    {
+      return stk.front();
+    }
+    
+    void pop_front()
+    {
+      stk.pop_front();
+    }
+    
     void up()
     {
       if (!stk.empty())
@@ -85,7 +102,7 @@ namespace fs
 		std::string real_path() const;
 		
 		int state;
-    std::vector<std::string> stk;
+    std::deque<std::string> stk;
 	};
 	
 }
