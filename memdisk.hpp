@@ -20,42 +20,65 @@
 #define MEMDISK_HPP
 
 #include <cstdint>
+#include <cstdio>
 #include <deque>
 #include <functional>
-#include "disk_device.hpp"
+#include "hw/disk_device.hpp"
 
 namespace fs
 {
-  class MemDisk : public IDiskDevice
+  class MemDisk : public hw::IDiskDevice
   {
   public:
     struct Entry
     {
-      Entry(uint32_t blk, uint8_t* dat)
+      Entry(uint32_t blk, buffer_t dat)
         : block(blk), data(dat) {}
       
       uint32_t block;
-      uint8_t* data;
+      buffer_t data;
     };
     
-    MemDisk(std::string disk_image, size_t cache_size = 16)
-      : image(disk_image), CACHE_SIZE(cache_size)
+    MemDisk(size_t cache_size = 16)
+      : CACHE_SIZE(cache_size) {}
+    
+    void set_image(std::string disk_image)
     {
-      
+      image = disk_image;
     }
     
-    virtual void read_sector(uint32_t blk, on_read_func func) override;
+    virtual const char* name() const noexcept override
+    {
+      return "MemDisk";
+    }
+    virtual block_t size() const noexcept override
+    {
+      FILE* f = fopen(image.c_str(), "r");
+      if (!f) return 0;
+      
+      fseek(f, 0L, SEEK_END);
+      off64_t sz = ftell(f);
+      fclose(f);
+      
+      return sz;
+    }
+    virtual block_t block_size() const noexcept override
+    {
+      return 512;
+    }
+    
+    virtual void read(block_t blk, on_read_func func) override;
+    virtual buffer_t read_sync(block_t) override;
+    // not implemented here:
+    virtual void read(block_t, block_t, on_read_func) override {}
     
   private:
     void free_entry()
     {
-      const auto& entry = cache.front();
-      delete[] entry.data;
-      
       cache.pop_front();
     }
     
-    void read_block(uint32_t blk, on_read_func func);
+    buffer_t read_block(block_t blk);
     
     std::string  image;
     const size_t CACHE_SIZE;

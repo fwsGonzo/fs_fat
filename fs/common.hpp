@@ -16,23 +16,21 @@
 // limitations under the License.
 
 #pragma once
-#ifndef DISK_DEVICE_HPP
-#define DISK_DEVICE_HPP
+#ifndef FS_COMMON_HPP
+#define FS_COMMON_HPP
 
-#include <cstdint>
-#include <functional>
 #include <memory>
 
-class IDiskDevice
-{
-public:
-  // To be used by caching mechanism for disk drivers
-  typedef std::shared_ptr<void*> buffer;
-  // Delegate for result of reading a disk sector
-  typedef std::function<void(const void*)> on_read_func;
-  
-  virtual void read_sector(uint32_t blk, on_read_func func) = 0;
-  
-};
+namespace fs {
 
-#endif
+typedef std::shared_ptr<uint8_t> buffer_t;
+
+// TODO: transform this into a class with a bool operator
+using error_t = bool;
+
+/** @var no_error: Always returns boolean false when used in expressions */
+extern error_t no_error;
+
+} //< namespace fs
+
+#endif //< FS_ERROR_HPP

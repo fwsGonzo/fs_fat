@@ -15,7 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "path.hpp"
+#include <fs/path.hpp>
 
 #include <string>
 #include <cerrno>
@@ -23,10 +23,9 @@
 namespace fs
 {
 	static const char PATH_SEPARATOR = '/';
-	static Path current_directory("/");
 	
 	Path::Path()
-		: Path(current_directory)
+		: Path("/")
 	{
 		// uses current directory
 	}
@@ -92,12 +91,12 @@ namespace fs
 		} // parse path
 		if (bufi)
 		{
-			return name_added(std::string(buffer, 0, bufi));
+			name_added(std::string(buffer, 0, bufi));
 		}
     return 0;
 	}
 	
-	int Path::name_added(const std::string& name)
+	void Path::name_added(const std::string& name)
 	{
 		//std::cout << "Path: " << toString() << " --> " << name << std::endl;
 		
@@ -105,21 +104,20 @@ namespace fs
 		{
 			// same directory
 		}
-		else if (name == "..")
+		/*else if (name == "..")
 		{
 			// if the stack is empty we are at root
 			if (stk.empty())
 			{
-				// trying to go above root is an error
-				return -ENOENT;
+				// trying to go above root is an error (?)
+				return;
 			}
       stk.pop_back();
-		}
+		}*/
 		else
 		{
 			// otherwise treat as directory
 			stk.push_back(name);
 		}
-    return 0;
 	}
 }

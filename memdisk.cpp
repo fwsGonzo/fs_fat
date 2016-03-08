@@ -5,53 +5,53 @@
 
 namespace fs
 {
-  void MemDisk::read_sector(uint32_t blk, on_read_func func)
+  void MemDisk::read(block_t blk, on_read_func callback)
+  {
+    auto buf = read_sync(blk);
+    callback(buf);
+  }
+  MemDisk::buffer_t MemDisk::read_sync(block_t blk)
   {
     // check for existing entry in cache
     for (auto& entry : cache)
     if (entry.block == blk)
     {
-      func(entry.data);
-      return;
+      return entry.data;
     }
     // make room if needed
     while (cache.size() >= CACHE_SIZE)
         free_entry();
     // retrieve block from disk
-    read_block(blk,
-    [this, blk, func] (const void* data)
+    auto data = read_block(blk);
+    if (!data)
     {
-      if (data == nullptr)
-      {
-          printf("Failed to read block %u\n", blk);
-          return;
-      }
-      // save for later
-      cache.emplace_back(blk, (uint8_t*) data);
-      func(data);
-    });
+      printf("Failed to read block %lu\n", blk);
+      return buffer_t();
+    }
+    // save for later
+    cache.emplace_back(blk, data);
+    return data;
   }
   
-  void MemDisk::read_block(uint32_t blk, on_read_func func)
+  MemDisk::buffer_t MemDisk::read_block(block_t blk)
   {
     FILE* f = fopen(image.c_str(), "r");
     if (!f)
     {
-      func(nullptr);
-      return;
+      return buffer_t();
     }
     
-    fseek(f, blk * 512, SEEK_SET);
+    fseek(f, blk * block_size(), SEEK_SET);
     
-    auto* buffer = new decltype(Entry::data)[512];
-    int res = fread(buffer, 512, 1, f);
+    auto* buffer = new uint8_t[block_size()];
+    int res = fread(buffer, block_size(), 1, f);
+    // fail when not reading block size
     if (res < 0)
     {
-      printf("read_block fread failed\n");
-      func(nullptr);
-      return;
+      printf("read_block (blk=%lu) fread failed: %s\n", blk, strerror(errno));
+      return buffer_t();
     }
     // call event handler for successful block read
-    func(buffer);
+    return buffer_t(buffer, std::default_delete<uint8_t[]>());
   }
 }

@@ -1,0 +1,2 @@
+#define debug(X,...)  printf("* " X,##__VA_ARGS__);
+#define debug2(X,...)  printf("** " X,##__VA_ARGS__);

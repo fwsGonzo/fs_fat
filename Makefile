@@ -2,13 +2,13 @@
  #    FAT32 reader    #
 ######################
 
-FILES  = main.cpp fat.cpp mbr.cpp vbr.cpp memdisk.cpp path.cpp
+FILES  = main.cpp memdisk.cpp fs/filesystem.cpp fs/fat.cpp fs/fat_sync.cpp fs/mbr.cpp fs/path.cpp
 OUTPUT = FAT
 
-CC = clang++-3.8 -std=c++11
+CC = clang++-3.8 -std=c++14
 
 ###########################
-CFLAGS = -MMD -Wall -Wextra -O0 -g -march=native
+CFLAGS = -MMD -Wall -Wextra -O0 -g -march=native -I.
 LFLAGS = -static-libgcc -static-libstdc++
 
 OBJS = $(FILES:.cpp=.o)
