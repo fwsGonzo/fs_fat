@@ -101,7 +101,7 @@ Disk<FS>::mount(partition_t part, on_mount_func func) {
   if (part == INVALID)
   {
     // Something bad happened maybe in auto-detect
-    panic("Disk::mount(): Trying to mount invalid partition");
+    func(true);
   }
   else if (part == MBR)
   {

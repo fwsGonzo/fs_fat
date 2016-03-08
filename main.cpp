@@ -90,7 +90,24 @@ int main(int argc, const char** argv)
     printf("-=           DISK MOUNTED             =-\n");
     printf("-= ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ =-\n");
     
-    disk->fs().ls("/TestDir",
+    disk->fs().ls("/",
+    [] (bool err, FileSystem::dirvec_t ents)
+    {
+      if (err)
+      {
+        printf("Could not list root directory");
+        return;
+      }
+      
+      for (auto& e : *ents)
+      {
+        printf("Entry: %s of size %lu bytes\n",
+            e.name().c_str(), e.size);
+        printf("Entry cluster: %lu\n", e.block);
+      }
+    });
+    printf("--------------------------------------\n");
+    disk->fs().ls("/TEST",
     [] (bool err, FileSystem::dirvec_t ents)
     {
       if (err)
@@ -108,12 +125,19 @@ int main(int argc, const char** argv)
     });
     printf("--------------------------------------\n");
     
-    /*
-    disk.open("/Koala.jpg",
-    [] (bool good, const Disk::Dirent& ent, Disk::File& file)
+    
+    disk->fs().stat("/TEST/TEST    TXT",
+    [] (bool err, const auto& ent)
     {
-      file.read(
-    });*/
+      if (err)
+      {
+        printf("stat: Failed to retrieve %s\n", ent.name().c_str());
+        return;
+      }
+      printf("%s: %s of size %lu bytes\n",
+          ent.type_string().c_str(), ent.name().c_str(), ent.size);
+      printf("Entry cluster: %lu\n", ent.block);
+    });
     
   });
   

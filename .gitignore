@@ -2,3 +2,4 @@ FAT
 *.o
 *.d
 *.img
+*.dmg
